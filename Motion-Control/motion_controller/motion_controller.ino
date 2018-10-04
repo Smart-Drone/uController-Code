@@ -2,8 +2,11 @@
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-#include "Wire.h"
+    #include "Wire.h"
 #endif
+
+// Include directive for Wi-Fi transmission
+#include "UDPServer.h"
 
 
 //==============================================================================================================
@@ -47,6 +50,16 @@ constexpr int ACCEL_SCALE_FACTOR = 16384;  // Factor for converting raw accel va
 
 
 //================================================================================================================
+//=                                             WIFI VARIABLES                                                   =
+//================================================================================================================
+UDPServer* udp_server;                                // Provides interface for Wi-Fi communication
+constexpr unsigned int LOCAL_UDP_PORT = 4210;         // Port number by which the device can be found
+constexpr char* WIFI_SSID = "PARROT_NEST";            // The device will try to connect to this network
+constexpr char* WIFI_PWD = "pollycracker";            // This password will be used for connecting to the network
+bool wifi_ready = false;                              // Set true if Wi-Fi setup was successful
+
+
+//================================================================================================================
 //=                                             INITIAL SETUP                                                    =
 //================================================================================================================
 void setup() {
@@ -58,6 +71,33 @@ void setup() {
 
     // Set pin for calibration button
     pinMode(CAL_BTN_PIN, INPUT);
+
+
+    /***************
+    *  WIFI SETUP  *
+    ***************/
+    // Start message
+    Serial.println("WI-FI SETUP");
+
+    // Print MAC Address
+    Serial.print("MAC Address: ");
+    Serial.println(WiFi.macAddress());
+
+    // Create interface for Wi-Fi transmission
+    udp_server = new UDPServer(WIFI_SSID, WIFI_PWD, LOCAL_UDP_PORT);
+
+    // Try to establish Wi-Fi connection
+    Serial.print("Trying to connect to network ");
+    Serial.println(WIFI_SSID);
+    if(udp_server->initialize()) {
+        Serial.println("Connection established!");
+        Serial.print("IP: ");
+        Serial.println(WiFi.localIP());
+        wifi_ready = true;
+    }
+    else {
+        Serial.println("CONNECTION FAILED!");
+    }
 
 
     /******************
@@ -127,8 +167,8 @@ void setup() {
 //                                            MAIN PROGRAM LOOP                                                  =
 //================================================================================================================
 void loop() {
-    // If programming failed, don't try to do anything
-    if (!dmp_ready) return;
+    // If setup failed, don't try to do anything
+    if (!dmp_ready || !wifi_ready) return;
 
 
     /************************
@@ -180,6 +220,22 @@ void loop() {
         Serial.print(ypr[1] * 180/M_PI);
         Serial.print("\t");
         Serial.println(ypr[2] * 180/M_PI);
+    }
+
+
+    /***********************
+    *  WI-FI TRANSMISSION  *
+    ***********************/
+    // If no request was received yet check for request
+    if(udp_server->getState() == UDPServer::WAITING_FOR_START) {
+        udp_server->listen();
+    }
+    // If request was received transmit pitch/roll data
+    if(udp_server->getState() == UDPServer::SENDING) {
+        String packet_string = "R/" + String(ypr[1]  * 180/M_PI) + "/" + String(ypr[2]  * 180/M_PI);
+        char packet[20];
+        packet_string.toCharArray(packet, 20);
+        udp_server->sendPacket(packet);
     }
 }
 
