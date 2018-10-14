@@ -227,15 +227,19 @@ void loop() {
     *  WI-FI TRANSMISSION  *
     ***********************/
     // If no request was received yet check for request
-    if(udp_server->getState() == UDPServer::WAITING_FOR_START) {
+    if(udp_server->getState() == UDPServer::WAITING_FOR_REQUEST) {
+        Serial.println("Waiting for request...");
         udp_server->listen();
     }
     // If request was received transmit pitch/roll data
     if(udp_server->getState() == UDPServer::SENDING) {
-        String packet_string = "R/" + String(ypr[1]  * 180/M_PI) + "/" + String(ypr[2]  * 180/M_PI);
-        char packet[20];
-        packet_string.toCharArray(packet, 20);
-        udp_server->sendPacket(packet);
+        //char packet[3] = {0,(char) (ypr[1]*180/ M_PI), (char) (ypr[2]*180/M_PI)};
+        Serial.println("Sending data...");
+        char pitch = ypr[1] * 180/M_PI;
+        char roll = ypr[2] * 180/M_PI;
+        char packet[3] = {2, pitch, roll};
+        //char packet[3] = {-6, -6, -6};
+        udp_server->sendPacket(packet, 3);
     }
 }
 

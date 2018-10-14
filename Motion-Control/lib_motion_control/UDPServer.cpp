@@ -52,7 +52,7 @@ bool UDPServer::initialize() {
         }
         // Otherwise report success and start waiting for requests
         else {
-            state = WAITING_FOR_START;
+            state = WAITING_FOR_REQUEST;
             return true;
         }
     }
@@ -65,7 +65,7 @@ bool UDPServer::initialize() {
 void UDPServer::listen(){
     int packet_size = udp.parsePacket();
     if(packet_size) {
-        int len = udp.read(incoming_packet, 255);
+        int len = udp.read(incoming_packet, 1);
         if(len > 0) {
             incoming_packet[len] = 0;
         }
@@ -77,9 +77,8 @@ void UDPServer::listen(){
 //==============================================================================================================
 //=                                        PACKET TRANSMISSION                                                 =
 //==============================================================================================================
-void UDPServer::sendPacket(char* packet) {
+void UDPServer::sendPacket(char* packet, int packet_size) {
     udp.beginPacket(udp.remoteIP(), udp.remotePort());
-    udp.write(packet);
+    udp.write(packet, packet_size);
     udp.endPacket();
-    state = WAITING_FOR_START;
 }
