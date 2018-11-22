@@ -8,6 +8,7 @@
 // Include directive for Wi-Fi transmission
 #include "UDPServer.h"
 
+#include "OffsetStore.h"
 
 //==============================================================================================================
 //=                                           GENERAL VARIABLES                                                =
@@ -15,6 +16,7 @@
 constexpr int BAUD_RATE = 115200;
 constexpr int CAL_BTN_PIN = D6; // Pin for calibration button
 
+OffsetStore store;
 
 //==============================================================================================================
 //=                                           MPU6050 VARIABLES                                                =
@@ -128,12 +130,20 @@ void setup() {
     dev_status = mpu.dmpInitialize();
 
     // Supply estimated offsets (calibration is necessary)
-    mpu.setXAccelOffset(402);
-    mpu.setYAccelOffset(-5978);
-    mpu.setZAccelOffset(1336);
-    mpu.setXGyroOffset(0);
-    mpu.setYGyroOffset(0);
-    mpu.setZGyroOffset(0);
+    store.loadOffsets(accel_offset, gyro_offset);
+    Serial.print("Loaded Offsets: ");
+    Serial.print(accel_offset[0]); Serial.print(" ");
+    Serial.print(accel_offset[1]); Serial.print(" ");
+    Serial.print(accel_offset[2]); Serial.print(" ");
+    Serial.print(gyro_offset[0]); Serial.print(" ");
+    Serial.print(gyro_offset[1]); Serial.print(" ");
+    Serial.print(gyro_offset[2]); Serial.println(" ");
+    mpu.setXAccelOffset(accel_offset[0]);
+    mpu.setYAccelOffset(accel_offset[1]);
+    mpu.setZAccelOffset(accel_offset[2]);
+    mpu.setXGyroOffset(gyro_offset[0]);
+    mpu.setYGyroOffset(gyro_offset[1]);
+    mpu.setZGyroOffset(gyro_offset[2]);
 
     if (dev_status == 0) { // Make sure DMP initalization was successful
         // Turn on the DMP, now that it's ready
@@ -312,6 +322,8 @@ void calibrateMPU6050() {
         if (abs(gyro_mean[2]) <= gyro_deadzone) ready++;
         else gyro_offset[2] -= gyro_mean[2] / (gyro_deadzone + 1);
     }
+
+    store.saveOffsets(accel_offset, gyro_offset);
 
     // Completion message
     Serial.println("Calibration completed");
