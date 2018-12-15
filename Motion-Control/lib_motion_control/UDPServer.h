@@ -16,14 +16,15 @@ public:
     enum State {
         INACTIVE,
         WAITING_FOR_REQUEST,
-        SENDING
+        READY_TO_SEND
     };
 
     // Constructor
-    UDPServer(const char* wifi_ssid, const char* wifi_pwd, unsigned int local_udp_port);
+    UDPServer(unsigned int local_udp_port);
 
     // Accesors
     State getState();
+    void setState(State state);
 
     // Initialization method
     bool initialize();
@@ -34,8 +35,6 @@ public:
 
 
 private:
-    const char* WIFI_SSID;             // The server will try to connect to this network
-    const char* WIFI_PWD;              // This password will be used for connecting to the network
     const unsigned int LOCAL_UDP_PORT; // Port number by which the server can be found
     WiFiUDP udp;                       // Object for UDP communication
     char incoming_packet[1];           // UDP packet to store requests

@@ -5,13 +5,9 @@
 //=                                        CONSTRUCTOR                                                         =
 //==============================================================================================================
 UDPServer::UDPServer(
-    const char* wifi_ssid,
-    const char* wifi_pwd,
     unsigned int local_udp_port
 )
-: WIFI_SSID(wifi_ssid)
-, WIFI_PWD(wifi_pwd)
-, LOCAL_UDP_PORT(local_udp_port)
+: LOCAL_UDP_PORT(local_udp_port)
 , udp()
 , state(INACTIVE) {
 
@@ -26,25 +22,14 @@ UDPServer::State UDPServer::getState() {
 }
 
 
+void UDPServer::setState(UDPServer::State state) {
+    this->state = state;
+}
+
 //==============================================================================================================
 //=                                        INITIALIZATION                                                      =
 //==============================================================================================================
 bool UDPServer::initialize() {
-    // Connect to Wi-Fi
-    int time_passed = 0;
-    int time_to_wait = 10000; // 10 seconds
-    WiFi.begin(WIFI_SSID, WIFI_PWD);
-    while (time_passed <= time_to_wait) {
-        time_passed += 500;
-        delay(500);
-    }
-
-    // Report failure if Wi-Fi connection failed
-    if(WiFi.status() != WL_CONNECTED) {
-        return false;
-    }
-    // Otherwise try to start UDP communication
-    else {
         int success = udp.begin(LOCAL_UDP_PORT);
         // Report failure if UDP communication could not be started
         if(success != 1) {
@@ -55,7 +40,6 @@ bool UDPServer::initialize() {
             state = WAITING_FOR_REQUEST;
             return true;
         }
-    }
 }
 
 
@@ -69,7 +53,7 @@ void UDPServer::listen(){
         if(len > 0) {
             incoming_packet[len] = 0;
         }
-        state = SENDING;
+        state = READY_TO_SEND;
     }
 }
 

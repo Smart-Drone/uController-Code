@@ -15,6 +15,11 @@
 //==============================================================================================================
 constexpr int BAUD_RATE = 115200;
 constexpr int CAL_BTN_PIN = D6; // Pin for calibration button
+constexpr int TAKEOFF_BTN_PIN = D4;
+constexpr int LAND_BTN_PIN = D5;
+volatile bool calibrate_flag = 0;
+volatile bool takeoff_flag = 0;
+volatile bool land_flag = 0;
 
 OffsetStore store;
 
@@ -54,12 +59,11 @@ constexpr int ACCEL_SCALE_FACTOR = 16384;  // Factor for converting raw accel va
 //================================================================================================================
 //=                                             WIFI VARIABLES                                                   =
 //================================================================================================================
-UDPServer* udp_server;                                // Provides interface for Wi-Fi communication
-constexpr unsigned int LOCAL_UDP_PORT = 4210;         // Port number by which the device can be found
+UDPServer* udp_server;                                // Provides interface for UDP communication
+constexpr unsigned int LOCAL_UDP_PORT = 4220;
 constexpr char* WIFI_SSID = "PARROT_NEST";            // The device will try to connect to this network
 constexpr char* WIFI_PWD = "pollycracker";            // This password will be used for connecting to the network
 bool wifi_ready = false;                              // Set true if Wi-Fi setup was successful
-
 
 //================================================================================================================
 //=                                             INITIAL SETUP                                                    =
@@ -71,9 +75,14 @@ void setup() {
     // Initialize serial communication
     Serial.begin(BAUD_RATE);
 
-    // Set pin for calibration button
-    pinMode(CAL_BTN_PIN, INPUT);
-
+    // Set button pins
+    pinMode(CAL_BTN_PIN, INPUT_PULLUP);
+    pinMode(TAKEOFF_BTN_PIN, INPUT_PULLUP);
+    pinMode(LAND_BTN_PIN, INPUT_PULLUP);
+    // Attach interrupts to buttons
+    attachInterrupt(digitalPinToInterrupt(CAL_BTN_PIN), calBtnPressed, FALLING);
+    attachInterrupt(digitalPinToInterrupt(TAKEOFF_BTN_PIN), takeoffBtnPressed, FALLING);
+    attachInterrupt(digitalPinToInterrupt(LAND_BTN_PIN), landBtnPressed, FALLING);
 
     /***************
     *  WIFI SETUP  *
@@ -85,17 +94,30 @@ void setup() {
     Serial.print("MAC Address: ");
     Serial.println(WiFi.macAddress());
 
-    // Create interface for Wi-Fi transmission
-    udp_server = new UDPServer(WIFI_SSID, WIFI_PWD, LOCAL_UDP_PORT);
-
     // Try to establish Wi-Fi connection
     Serial.print("Trying to connect to network ");
     Serial.println(WIFI_SSID);
-    if(udp_server->initialize()) {
-        Serial.println("Connection established!");
-        Serial.print("IP: ");
-        Serial.println(WiFi.localIP());
-        wifi_ready = true;
+    int time_passed = 0;
+    int time_to_wait = 10000; // 10 seconds
+    WiFi.begin(WIFI_SSID, WIFI_PWD);
+    while (time_passed <= time_to_wait) {
+        time_passed += 500;
+        delay(500);
+    }
+
+    // Stop if Wi-Fi connection failed
+    if(WiFi.status() == WL_CONNECTED) {
+        // Create interfaces for UDP transmission
+        udp_server = new UDPServer(LOCAL_UDP_PORT);
+        if(udp_server->initialize()) {
+            Serial.println("Connection established!");
+            Serial.print("IP: ");
+            Serial.println(WiFi.localIP());
+            wifi_ready = true;
+        }
+        else {
+            Serial.println("UDP INITIALIZATION FAILED");
+        }
     }
     else {
         Serial.println("CONNECTION FAILED!");
@@ -184,9 +206,9 @@ void loop() {
     /************************
     *  MPU6050 CALIBRATION  *
     ************************/
-    // Start calibration routine when user presses calibration button
-    int btn_state = digitalRead(CAL_BTN_PIN);
-    if(btn_state == HIGH) {
+    // Start calibration routine when user pressed calibration button
+    if(calibrate_flag) {
+        calibrate_flag = false;
         calibrateMPU6050();
     }
 
@@ -238,27 +260,54 @@ void loop() {
     ***********************/
     // If no request was received yet check for request
     if(udp_server->getState() == UDPServer::WAITING_FOR_REQUEST) {
-        Serial.println("Waiting for request...");
         udp_server->listen();
+        Serial.println("UDP server waiting for request...");
     }
-    // If request was received transmit pitch/roll data
-    if(udp_server->getState() == UDPServer::SENDING) {
-        //char packet[3] = {0,(char) (ypr[1]*180/ M_PI), (char) (ypr[2]*180/M_PI)};
-        Serial.println("Sending data...");
-        char pitch = ypr[1] * 180/M_PI;
-        char roll = ypr[2] * 180/M_PI;
-        char packet[3] = {2, pitch, roll};
-        //char packet[3] = {-6, -6, -6};
-        udp_server->sendPacket(packet, 3);
+
+    // If request was received transmit pitch/roll data or takeoff/land commands
+    if(udp_server->getState() == UDPServer::READY_TO_SEND) {
+        if (takeoff_flag) {
+            takeoff_flag = false;
+            char packet[3] = {2, 0, 0};  // 2 for takeoff
+            udp_server->sendPacket(packet, 3);
+            udp_server->setState(UDPServer::WAITING_FOR_REQUEST);
+            Serial.println("Sending takeoff command...");
+        }
+        else if (land_flag) {
+            land_flag = false;
+            char packet[3] = {3, 0, 0};  // 3 for landing
+            udp_server->sendPacket(packet, 3);
+            udp_server->setState(UDPServer::WAITING_FOR_REQUEST);
+            Serial.println("Sending land command...");
+        }
+        else {
+            char pitch = ypr[1] * 180/M_PI;
+            char roll = ypr[2] * 180/M_PI;
+            char packet[3] = {1, pitch, roll};  // 1 for motion data
+            udp_server->sendPacket(packet, 3);
+            Serial.println("Sending data...");
+        }
     }
 }
 
 
 //================================================================================================================
-//                                       INTERRUPT DETECTION ROUTINE                                             =
+//                                       INTERRUPT DETECTION ROUTINES                                            =
 //================================================================================================================
 void dmpDataReady() {
     mpu_interrupt = true;
+}
+
+void calBtnPressed() {
+    calibrate_flag = true;
+}
+
+void takeoffBtnPressed() {
+    takeoff_flag = true;
+}
+
+void landBtnPressed() {
+    land_flag = true;
 }
 
 
